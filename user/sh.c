@@ -51,6 +51,10 @@ struct backcmd {
   struct cmd *cmd;
 };
 
+#define MAXBG 64
+int bgpids[MAXBG];
+int nbg = 0;
+
 int fork1(void); // Fork but panics on failure.
 void panic(char *);
 struct cmd *parsecmd(char *);
@@ -174,10 +178,32 @@ main(void)
       cmd[strlen(cmd) - 1] = 0; // chop \n
       if (chdir(cmd + 3) < 0)
         fprintf(2, "cannot cd %s\n", cmd + 3);
+    } else if (cmd[0] == 'w' && cmd[1] == 'a' && cmd[2] == 'i' &&
+               cmd[3] == 't' && (cmd[4] == '\n' || cmd[4] == ' ')) {
+      // wait builtin: wait for all tracked background jobs.
+      if (nbg == 0) {
+        fprintf(2, "wait: no background jobs\n");
+      } else {
+        while (nbg > 0) {
+          wait(0);
+          nbg--;
+        }
+      }
     } else {
-      if (fork1() == 0)
-        runcmd(parsecmd(cmd));
-      wait(0);
+      struct cmd *parsed = parsecmd(cmd);
+      if (parsed->type == BACK) {
+        struct backcmd *bcmd = (struct backcmd *)parsed;
+        int pid = fork1();
+        if (pid == 0) {
+          runcmd(bcmd->cmd);
+        } else if (nbg < MAXBG) {
+          bgpids[nbg++] = pid;
+        }
+      } else {
+        if (fork1() == 0)
+          runcmd(parsed);
+        wait(0);
+      }
     }
   }
   exit(0);
@@ -503,3 +529,4 @@ nulterminate(struct cmd *cmd)
   }
   return cmd;
 }
+
