@@ -5,7 +5,6 @@
 #include "kernel/fcntl.h"
 #include "kernel/stat.h"
 
-
 // Parsed command representation
 #define EXEC  1
 #define REDIR 2
@@ -142,12 +141,12 @@ int
 wordstart(char *buf, int i)
 {
   int s = i;
-  while (s > 0 && buf[s-1] != ' ' && buf[s-1] != '\t')
+  while (s > 0 && buf[s - 1] != ' ' && buf[s - 1] != '\t')
     s--;
   return s;
 }
 
-#define MAXHIST 16
+#define MAXHIST  16
 #define HISTLINE 100
 
 char history[MAXHIST][HISTLINE];
@@ -162,7 +161,7 @@ addhistory(char *buf, int len)
   if (nhist == MAXHIST) {
     // drop the oldest entry, shift everything down
     for (int k = 1; k < MAXHIST; k++)
-      memmove(history[k-1], history[k], HISTLINE);
+      memmove(history[k - 1], history[k], HISTLINE);
     nhist--;
   }
   memmove(history[nhist], buf, len);
@@ -213,7 +212,10 @@ tabcomplete(char *buf, int i, int interactive)
       continue;
     int match = 1;
     for (int k = 0; k < wlen; k++) {
-      if (name[k] != word[k]) { match = 0; break; }
+      if (name[k] != word[k]) {
+        match = 0;
+        break;
+      }
     }
     if (!match)
       continue;
@@ -245,7 +247,6 @@ tabcomplete(char *buf, int i, int interactive)
   return i;
 }
 
-
 int
 getcmd(char *buf, int nbuf)
 {
@@ -253,7 +254,7 @@ getcmd(char *buf, int nbuf)
   int interactive;
   int i = 0;
   char c;
-int histidx;
+  int histidx;
 
   interactive = (fstat(0, &st) < 0 || st.type != T_FILE);
 
@@ -261,7 +262,7 @@ int histidx;
     write(2, "$ ", 2);
 
   memset(buf, 0, nbuf);
-histidx = nhist;
+  histidx = nhist;
 
   if (interactive)
     rawmode(1);
@@ -280,34 +281,40 @@ histidx = nhist;
         if (interactive)
           write(1, "\b \b", 3);
       }
-	} else if (c == 9) {
+    } else if (c == 9) {
       i = tabcomplete(buf, i, interactive);
       continue;
     } else if (c == 27) {
       char seq[2];
-      if (read(0, &seq[0], 1) <= 0) break;
+      if (read(0, &seq[0], 1) <= 0)
+        break;
       if (seq[0] == '[') {
-        if (read(0, &seq[1], 1) <= 0) break;
+        if (read(0, &seq[1], 1) <= 0)
+          break;
         if (seq[1] == 'A') {
           // Up arrow: recall older history entry
           if (histidx > 0) {
             histidx--;
-            if (interactive) eraseline(i);
+            if (interactive)
+              eraseline(i);
             i = strlen(history[histidx]);
             memmove(buf, history[histidx], i);
-            if (interactive) write(1, buf, i);
+            if (interactive)
+              write(1, buf, i);
           }
         } else if (seq[1] == 'B') {
           // Down arrow: move toward newer entry, or clear if already newest
           if (histidx < nhist) {
             histidx++;
-            if (interactive) eraseline(i);
+            if (interactive)
+              eraseline(i);
             if (histidx == nhist) {
               i = 0;
             } else {
               i = strlen(history[histidx]);
               memmove(buf, history[histidx], i);
-              if (interactive) write(1, buf, i);
+              if (interactive)
+                write(1, buf, i);
             }
           }
         }
@@ -715,4 +722,3 @@ nulterminate(struct cmd *cmd)
   }
   return cmd;
 }
-

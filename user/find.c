@@ -8,10 +8,10 @@ int match(char *, char *);
 int matchhere(char *, char *);
 int matchstar(int, char *, char *);
 
-char*
+char *
 fmtname(char *path)
 {
-  static char buf[DIRSIZ+1];
+  static char buf[DIRSIZ + 1];
   char *p;
 
   for (p = path + strlen(path); p >= path && *p != '/'; p--)
@@ -133,8 +133,6 @@ main(int argc, char *argv[])
   find(argv[1], argv[2], execargv, execargc);
   exit(0);
 }
-
-
 
 int
 match(char *re, char *text)
