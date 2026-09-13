@@ -53,6 +53,7 @@ struct {
   uint r; // Read index
   uint w; // Write index
   uint e; // Edit index
+  int rawmode; // 1 = raw (uncooked) input mode
 } cons;
 
 //
@@ -126,7 +127,7 @@ consoleread(int user_dst, uint64 dst, int n)
     dst++;
     --n;
 
-    if (c == '\n') {
+    if (c == '\n' || cons.rawmode) {
       // a whole line has arrived, return to
       // the user-level read().
       break;
@@ -143,10 +144,23 @@ consoleread(int user_dst, uint64 dst, int n)
 // do erase/kill processing, append to cons.buf,
 // wake up consoleread() if a whole line has arrived.
 //
+
 void
 consoleintr(int c)
 {
   acquire(&cons.lock);
+
+  if (cons.rawmode) {
+    // Raw mode: no kernel echo, no backspace/kill-line handling.
+    // Hand every byte straight to the reader immediately.
+    if (c != 0 && cons.e - cons.r < INPUT_BUF_SIZE) {
+      cons.buf[cons.e++ % INPUT_BUF_SIZE] = c;
+      cons.w = cons.e;
+      wakeup(&cons.r);
+    }
+    release(&cons.lock);
+    return;
+  }
 
   switch (c) {
   case C('P'): // Print process list.
@@ -186,6 +200,14 @@ consoleintr(int c)
     break;
   }
 
+  release(&cons.lock);
+}
+
+void
+consolerawmode(int on)
+{
+  acquire(&cons.lock);
+  cons.rawmode = on;
   release(&cons.lock);
 }
 

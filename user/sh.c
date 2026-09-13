@@ -137,18 +137,204 @@ runcmd(struct cmd *cmd)
   exit(0);
 }
 
+// Find the start of the current word being typed (last whitespace before buf[i], or buf itself)
+int
+wordstart(char *buf, int i)
+{
+  int s = i;
+  while (s > 0 && buf[s-1] != ' ' && buf[s-1] != '\t')
+    s--;
+  return s;
+}
+
+#define MAXHIST 16
+#define HISTLINE 100
+
+char history[MAXHIST][HISTLINE];
+int nhist = 0;
+
+// Save a completed command line (buf[0..len)) into history.
+void
+addhistory(char *buf, int len)
+{
+  if (len <= 0)
+    return;
+  if (nhist == MAXHIST) {
+    // drop the oldest entry, shift everything down
+    for (int k = 1; k < MAXHIST; k++)
+      memmove(history[k-1], history[k], HISTLINE);
+    nhist--;
+  }
+  memmove(history[nhist], buf, len);
+  history[nhist][len] = 0;
+  nhist++;
+}
+
+// Erase n characters that are currently displayed on screen.
+void
+eraseline(int n)
+{
+  for (int k = 0; k < n; k++)
+    write(1, "\b \b", 3);
+}
+
+// Attempt tab completion on buf[0..i). Returns new i (cursor/length).
+// interactive controls whether we echo characters we add.
+int
+tabcomplete(char *buf, int i, int interactive)
+{
+  int ws = wordstart(buf, i);
+  int wlen = i - ws;
+  char *word = buf + ws;
+
+  int fd = open(".", O_RDONLY);
+  if (fd < 0)
+    return i;
+
+  struct dirent {
+    ushort inum;
+    char name[14];
+  } de;
+
+  char common[14];
+  int ncommon = -1; // -1 means "not yet set"
+  int nmatches = 0;
+
+  while (read(fd, &de, sizeof(de)) == sizeof(de)) {
+    if (de.inum == 0)
+      continue;
+    // name field isn't guaranteed NUL-terminated if it's exactly 14 chars
+    char name[15];
+    memmove(name, de.name, 14);
+    name[14] = 0;
+    int namelen = strlen(name);
+
+    if (namelen < wlen)
+      continue;
+    int match = 1;
+    for (int k = 0; k < wlen; k++) {
+      if (name[k] != word[k]) { match = 0; break; }
+    }
+    if (!match)
+      continue;
+    nmatches++;
+    if (ncommon == -1) {
+      strcpy(common, name);
+      ncommon = namelen;
+    } else {
+      int k = 0;
+      while (k < ncommon && k < namelen && common[k] == name[k])
+        k++;
+      ncommon = k;
+    }
+  }
+  close(fd);
+
+  if (nmatches == 0)
+    return i;
+
+  // Append the extra characters from wlen..ncommon of the common prefix
+  int j = wlen;
+  while (j < ncommon && i < 98) {
+    buf[i] = common[j];
+    if (interactive)
+      write(1, &buf[i], 1);
+    i++;
+    j++;
+  }
+  return i;
+}
+
+
 int
 getcmd(char *buf, int nbuf)
 {
   struct stat st;
+  int interactive;
+  int i = 0;
+  char c;
+int histidx;
 
-  if (fstat(0, &st) < 0 || st.type != T_FILE)
+  interactive = (fstat(0, &st) < 0 || st.type != T_FILE);
+
+  if (interactive)
     write(2, "$ ", 2);
 
   memset(buf, 0, nbuf);
-  gets(buf, nbuf);
-  if (buf[0] == 0) // EOF
-    return -1;
+histidx = nhist;
+
+  if (interactive)
+    rawmode(1);
+
+  while (i < nbuf - 2) {
+    int n = read(0, &c, 1);
+    if (n <= 0)
+      break; // EOF or error
+
+    if (c == '\r' || c == '\n') {
+      break;
+    } else if (c == 127 || c == 8) {
+      // backspace/delete
+      if (i > 0) {
+        i--;
+        if (interactive)
+          write(1, "\b \b", 3);
+      }
+	} else if (c == 9) {
+      i = tabcomplete(buf, i, interactive);
+      continue;
+    } else if (c == 27) {
+      char seq[2];
+      if (read(0, &seq[0], 1) <= 0) break;
+      if (seq[0] == '[') {
+        if (read(0, &seq[1], 1) <= 0) break;
+        if (seq[1] == 'A') {
+          // Up arrow: recall older history entry
+          if (histidx > 0) {
+            histidx--;
+            if (interactive) eraseline(i);
+            i = strlen(history[histidx]);
+            memmove(buf, history[histidx], i);
+            if (interactive) write(1, buf, i);
+          }
+        } else if (seq[1] == 'B') {
+          // Down arrow: move toward newer entry, or clear if already newest
+          if (histidx < nhist) {
+            histidx++;
+            if (interactive) eraseline(i);
+            if (histidx == nhist) {
+              i = 0;
+            } else {
+              i = strlen(history[histidx]);
+              memmove(buf, history[histidx], i);
+              if (interactive) write(1, buf, i);
+            }
+          }
+        }
+        // 'C' (right) and 'D' (left) intentionally left as no-ops
+      }
+      continue;
+    } else {
+      buf[i++] = c;
+      if (interactive)
+        write(1, &c, 1);
+    }
+  }
+
+  if (interactive) {
+    write(1, "\n", 1);
+    rawmode(0);
+  }
+
+  if (i > 0)
+    addhistory(buf, i);
+
+  buf[i] = '\n';
+  buf[i + 1] = 0;
+
+  if (i == 0 && buf[0] == '\n' && !interactive)
+    return -1; // EOF on a script/pipe with nothing left to read
+
   return 0;
 }
 

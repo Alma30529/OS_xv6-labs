@@ -207,6 +207,7 @@ UPROGS=\
 	$U/_sixfive\
 	$U/_find\
 	$U/_uptime\
+	$U/_rawtest\
 
 ifeq ($(LAB),syscall)
 UPROGS += \

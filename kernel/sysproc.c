@@ -110,3 +110,13 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_rawmode(void)
+{
+  int on;
+
+  argint(0, &on);
+  consolerawmode(on);
+  return 0;
+}
